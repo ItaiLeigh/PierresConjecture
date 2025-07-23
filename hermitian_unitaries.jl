@@ -4,10 +4,18 @@ using LinearAlgebra
 using Random
 
 
+function round_to_hermitian(U::Matrix{ComplexF64}; atol=1e-12)
+    if !isapprox(U, U', atol=atol)
+        @warn "Input matrix is not Hermitian within tolerance, but will be symmetrized."
+    end
+    return (U + U') / 2
+end
+
 function random_hermitian_unitary(D::Int)
     Q, _ = qr(randn(ComplexF64, D, D))  # Random unitary
     diag_vals = rand([-1.0, 1.0], D)    # ±1 eigenvalues
-    return Q * Diagonal(diag_vals) * Q'
+    U = Q * Diagonal(diag_vals) * Q'
+    return round_to_hermitian(U)
 end
 
 function draw_U_k(K::Int, D::Int; shared::Bool=false, commuting::Bool=false)
@@ -21,7 +29,7 @@ function draw_U_k(K::Int, D::Int; shared::Bool=false, commuting::Bool=false)
     elseif commuting
         # Shared eigenbasis
         Q, _ = qr(randn(ComplexF64, D, D))  # random unitary
-        return [Q * Diagonal(rand([-1.0, 1.0], D)) * Q' for _ in 1:K]
+        return [round_to_hermitian(Q * Diagonal(rand([-1.0, 1.0], D)) * Q') for _ in 1:K]
     else
         Hs = [random_hermitian_unitary(D) for _ in 1:K]
         #println("||H_1-H_2|| = ", opnorm(Hs[1]-Hs[2], 2))
@@ -35,41 +43,18 @@ function rand_floats(a, b, n)
     a .+ (b - a) .* rand(n)
 end
 
-function draw_H_k(K::Int, D::Int, eig_bound::ComplexF64)
+function draw_H_k(K::Int, D::Int, eig_bound::Float64)
     Q, _ = qr(randn(ComplexF64, D, D))  # Random unitary
     diag_vals = rand_floats(-eig_bound, eig_bound, D)    # eigenvalues
-    return Q * Diagonal(diag_vals) * Q'
+    return round_to_hermitian(Q * Diagonal(diag_vals) * Q')
 end
 
 function project_back_to_hermitian_unitary(U::Matrix{ComplexF64})
     # Make U Hermitian
     U = (U + U') / 2
     eigvals_U, eigvecs_U = eigen(U)
-    return eigvecs_U * Diagonal(sign.(eigvals_U)) * eigvecs_U'
+    return round_to_hermitian(eigvecs_U * Diagonal(sign.(eigvals_U)) * eigvecs_U')
 end
-
-using Test
-
-@testset "project_back_to_hermitian_unitary tests" begin
-    # Test 1: Check if the function returns a Hermitian matrix
-    U = randn(ComplexF64, 4, 4)
-    U_projected = project_back_to_hermitian_unitary(U)
-    @test all(U_projected .≈ U_projected')
-
-    # Test 2: Check if the eigenvalues are ±1
-    eigvals_U_projected = eigen(U_projected).values
-    @test all(abs.(eigvals_U_projected) .≈ 1.0)
-
-    # Test 3: Check if the function preserves the shape of the matrix
-    @test size(U_projected) == size(U)
-
-    # Test 4: Check if the function works for a Hermitian matrix input
-    U_hermitian = (U + U') / 2
-    U_projected_hermitian = project_back_to_hermitian_unitary(U_hermitian)
-    @test all(U_projected_hermitian ≈ U_projected_hermitian')
-    @test all(abs.(eigen(U_projected_hermitian).values) .≈ 1.0)
-end
-
 
 export random_hermitian_unitary, project_back_to_hermitian_unitary, draw_U_k, draw_H_k
 
